@@ -1,0 +1,21 @@
+{
+    "name": "wohnungs-radar",
+    "version": "0.1.0",
+    "description": "Fast listing watcher for Berlin's state-owned housing companies",
+    "main": "src/index.js",
+    "scripts": {
+        "start": "node src/index.js run",
+        "once": "node src/index.js once",
+        "probe": "node src/index.js probe",
+        "stats": "node src/index.js stats",
+        "test-notify": "node src/index.js test-notify",
+        "test": "node --test test/core.test.js"
+    },
+    "engines": {
+        "node": ">=20"
+    },
+    "dependencies": {
+        "cheerio": "^1.0.0",
+        "node-notifier": "^10.0.1"
+    }
+}
