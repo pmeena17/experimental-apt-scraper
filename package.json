@@ -9,6 +9,8 @@
         "probe": "node src/index.js probe",
         "stats": "node src/index.js stats",
         "test-notify": "node src/index.js test-notify",
+        "test-telegram": "node src/index.js test-telegram",
+        "telegram-setup": "node src/index.js telegram-setup",
         "test": "node --test test/core.test.js"
     },
     "engines": {

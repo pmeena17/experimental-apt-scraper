@@ -4,7 +4,7 @@ const path = require('node:path');
 const { createHttp } = require('./http');
 const { Store } = require('./store');
 const { evaluate } = require('./filter');
-const { notifyListing, describe, toast } = require('./notify');
+const { notifyListing, describe, toast, telegramPayload, telegramConfigured, sendTelegram, telegramCall } = require('./notify');
 const { makeListing } = require('./listing');
 const sources = require('./sources');
 const { isActive, jittered, clock, fmtEuro, fmtNum } = require('./util');
@@ -203,6 +203,19 @@ async function cmdRun(rt)
     const s = rt.cfg.schedule;
     console.log('Wohnungs-Radar running. Active ' + s.start + '-' + s.end + ' (' + s.timezone + '). Sources: ' + names.map((n) => n + ' every ' + rt.cfg.sources[n].intervalSec + ' s').join(', '));
     console.log('Ctrl+C to stop. First start only remembers what is online; new listings are reported from then on.\n');
+    const tg = rt.cfg.notify.telegram || {};
+    if (tg.enabled && !telegramConfigured(tg))
+    {
+        rt.log.warn('Telegram is enabled but botToken or chatId is missing in config.js - no phone alerts will be sent.');
+    }
+    else if (telegramConfigured(tg))
+    {
+        rt.log.info('Telegram alerts are on.');
+        if (tg.startupMessage !== false)
+        {
+            sendTelegram(tg.botToken, { chat_id: tg.chatId, text: 'Wohnungs-Radar läuft (' + names.join(', ') + ').' }).catch((err) => rt.log.warn('Telegram start message failed: ' + err.message));
+        }
+    }
     for (const name of names)
     {
         startLoop(rt, sources[name]);
@@ -299,6 +312,70 @@ function cmdTestNotify(rt)
     console.log(toast(d.title, d.body, d.url) ? 'Toast sent (click it to open the link).' : 'node-notifier not installed - run npm install.');
 }
 
+const SAMPLE = () => makeListing({ source: 'test', company: 'degewo', url: 'https://www.degewo.de/immosuche', title: 'Testwohnung', street: 'Teststraße 1', plz: '10115', bezirk: 'Mitte', ortsteil: 'Mitte', rooms: 2, area: 55, rentWarm: 800, floor: 2, floors: 5, energyClass: 'C', available: 'sofort' });
+
+async function cmdTestTelegram(rt)
+{
+    const settings = rt.cfg.notify.telegram || {};
+    if (!settings.botToken || !settings.chatId)
+    {
+        console.log('Telegram is not set up yet. Fill in botToken and chatId in config.js (see README, section Telegram), or run: npm run telegram-setup');
+        return;
+    }
+    try
+    {
+        await sendTelegram(settings.botToken, telegramPayload(settings, SAMPLE(), ['Testalarm'], 'test'));
+        console.log('Sent. Check Telegram: you should see a message with a "Jetzt bewerben" button and a link.');
+    }
+    catch (err)
+    {
+        console.log('FAILED: ' + err.message);
+    }
+}
+
+// prints the chat id(s) of everyone who recently wrote to your bot
+async function cmdTelegramSetup(rt)
+{
+    const settings = rt.cfg.notify.telegram || {};
+    if (!settings.botToken)
+    {
+        console.log('Put the token from @BotFather into notify.telegram.botToken in config.js first, then write any message to your bot in Telegram, then run this again.');
+        return;
+    }
+    try
+    {
+        const r = await telegramCall(settings.botToken, 'getUpdates', {});
+        if (!r.ok)
+        {
+            console.log('Telegram says: ' + ((r.body && r.body.description) || r.status) + ' (is the token correct?)');
+            return;
+        }
+        const chats = new Map();
+        for (const update of r.body.result || [])
+        {
+            const chat = (update.message || update.edited_message || {}).chat;
+            if (chat)
+            {
+                chats.set(chat.id, [chat.first_name, chat.last_name, chat.username ? '@' + chat.username : ''].filter(Boolean).join(' '));
+            }
+        }
+        if (chats.size === 0)
+        {
+            console.log('No messages found. Open your bot in Telegram, press Start, send "hi", then run this again.');
+            return;
+        }
+        for (const [id, name] of chats)
+        {
+            console.log('chatId: ' + id + '   (' + name + ')');
+        }
+        console.log('Put that number into notify.telegram.chatId (as a string, in quotes), set enabled: true, then run: npm run test-telegram');
+    }
+    catch (err)
+    {
+        console.log('FAILED: ' + err.message);
+    }
+}
+
 async function main()
 {
     const args = parseArgs(process.argv.slice(2));
@@ -333,9 +410,17 @@ async function main()
     {
         cmdTestNotify(rt);
     }
+    else if (command === 'test-telegram')
+    {
+        await cmdTestTelegram(rt);
+    }
+    else if (command === 'telegram-setup')
+    {
+        await cmdTelegramSetup(rt);
+    }
     else
     {
-        console.log('Commands: run (default) | once | probe | stats | test-notify    Flags: --verbose --source=a,b --notify-existing --config=file');
+        console.log('Commands: run (default) | once | probe | stats | test-notify | test-telegram | telegram-setup    Flags: --verbose --source=a,b --notify-existing --config=file');
     }
 }
 

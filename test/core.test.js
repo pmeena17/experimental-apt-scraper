@@ -329,3 +329,68 @@ test('pipeline: baseline, new flat, cross-source duplicate, detail enrichment', 
     await tick(rt, fake);
     assert.strictEqual(rt.store.find(rejected).notified, false, 'ground floor rejected by minFloor');
 });
+
+test('telegram message always carries the link (button, text link, plain url)', () =>
+{
+    const { telegramPayload, telegramConfigured } = require('../src/notify');
+    const url = 'https://www.gewobag.de/fuer-mietinteressentinnen/mietangebote/0100-01036-0701-0310/?a=1&b=2';
+    const l = makeListing({ source: 'ibw', company: 'gewobag', url, title: 'Tom & <Jerry>', street: 'Betulaweg 21', plz: '12524', bezirk: 'Treptow-Köpenick', rooms: 2, area: 62.2, rentWarm: 1026.6, floor: 3, floors: 5, energyClass: 'C' });
+    const p = telegramPayload({ chatId: '123' }, l, ['WBS unclear'], 'inberlinwohnen');
+    assert.strictEqual(p.chat_id, '123');
+    assert.strictEqual(p.parse_mode, 'HTML');
+    assert.strictEqual(p.disable_web_page_preview, true);
+    assert.strictEqual(p.reply_markup.inline_keyboard[0][0].url, url);
+    assert.ok(p.text.includes('<a href="https://www.gewobag.de/fuer-mietinteressentinnen/mietangebote/0100-01036-0701-0310/?a=1&amp;b=2">'));
+    assert.ok(p.text.includes('\nhttps://www.gewobag.de/fuer-mietinteressentinnen/mietangebote/0100-01036-0701-0310/?a=1&amp;b=2'));
+    assert.ok(p.text.includes('GEWOBAG | 2 Zi | 62,2 m²'));
+    assert.ok(p.text.includes('Hinweis: WBS unclear'));
+    assert.ok(!p.text.includes('<Jerry>'));
+    assert.strictEqual(telegramConfigured({ enabled: true, botToken: 't', chatId: '1' }), true);
+    assert.strictEqual(telegramConfigured({ enabled: true, botToken: '', chatId: '1' }), false);
+    assert.strictEqual(telegramConfigured({ enabled: false, botToken: 't', chatId: '1' }), false);
+});
+
+test('telegram sending: success, rate limit retry, button fallback, hard failure', async () =>
+{
+    const { sendTelegram } = require('../src/notify');
+    const realFetch = globalThis.fetch;
+    const calls = [];
+    const respond = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
+    try
+    {
+        calls.length = 0;
+        globalThis.fetch = async (u, opts) =>
+        {
+            calls.push(JSON.parse(opts.body));
+            return respond(200, { ok: true });
+        };
+        await sendTelegram('tok', { chat_id: '1', text: 'x', reply_markup: { a: 1 } });
+        assert.strictEqual(calls.length, 1);
+
+        calls.length = 0;
+        globalThis.fetch = async (u, opts) =>
+        {
+            calls.push(JSON.parse(opts.body));
+            return calls.length === 1 ? respond(429, { parameters: { retry_after: 0 } }) : respond(200, { ok: true });
+        };
+        await sendTelegram('tok', { chat_id: '1', text: 'x' });
+        assert.strictEqual(calls.length, 2, 'retried after 429');
+
+        calls.length = 0;
+        globalThis.fetch = async (u, opts) =>
+        {
+            calls.push(JSON.parse(opts.body));
+            return calls.length === 1 ? respond(400, { description: 'BUTTON_URL_INVALID' }) : respond(200, { ok: true });
+        };
+        await sendTelegram('tok', { chat_id: '1', text: 'x', reply_markup: { inline_keyboard: [] } });
+        assert.strictEqual(calls.length, 2);
+        assert.strictEqual(calls[1].reply_markup, undefined, 'resent without the button, link still in the text');
+
+        globalThis.fetch = async () => respond(401, { description: 'Unauthorized' });
+        await assert.rejects(() => sendTelegram('bad', { chat_id: '1', text: 'x' }), /Unauthorized/);
+    }
+    finally
+    {
+        globalThis.fetch = realFetch;
+    }
+});

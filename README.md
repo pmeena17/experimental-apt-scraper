@@ -14,7 +14,7 @@ sources, and alerts you within seconds. It does **not** apply for you (that is m
 
 | command | what it does |
 |---|---|
-| `npm test` | 20 offline checks of the parsing/filter logic |
+| `npm test` | 22 offline checks of the parsing, filter and Telegram logic |
 | `npm run test-notify` | sends a test Windows notification; click it, it should open a page |
 | `npm run probe` | downloads the real pages, tells you how many listings each parser found and which fields it filled. **If a line says FAILED or a count is 0 / low, zip the `debug` folder and send it to me.** |
 | `npm run once` | one pass over everything online right now, shows `MATCH` / `skip` + the reason for each flat (use it to tune `config.js`) |
@@ -22,6 +22,26 @@ sources, and alerts you within seconds. It does **not** apply for you (that is m
 
 Useful flags: `--verbose` (see every skip and every poll), `--source=degewo,gewobag`, `--notify-existing`.
 `npm run stats` (after a few days) shows which source finds flats first, so we know where speed is won.
+
+## Telegram on your phone (every alert contains the link to apply)
+
+Each alert is one Telegram message: a bold headline (company, rooms, size, rent), address and facts, a
+**"Jetzt bewerben" button**, a clickable "Zum Inserat / Bewerben" link, and the plain URL as well (so the link is
+there even if Telegram shows only the text, e.g. on the lock screen). Link previews are switched off so the
+message appears instantly. If Telegram is briefly unreachable or rate-limits, it retries; if it rejects the
+button, it resends without the button and the link stays in the text.
+
+One-time setup (about 3 minutes):
+
+1. In Telegram, open **@BotFather**, send `/newbot`, choose a name. Copy the token it gives you.
+2. Open your new bot in Telegram, press **Start**, send "hi".
+3. In `config.js`, paste the token into `notify.telegram.botToken`.
+4. Run `npm run telegram-setup`. It prints your `chatId`. Put it into `notify.telegram.chatId` in quotes and set `enabled: true`.
+5. Run `npm run test-telegram`. You should get a test message with the button within a few seconds.
+
+When `npm start` runs it sends "Wohnungs-Radar läuft" once, so you know it is alive (turn off with `startupMessage: false`).
+Tip: in Telegram, set the bot chat to "Sound on" and, on Android, give it a loud notification channel.
+The PC with the program running must be on. Applying from the phone is manual: tap the button, fill the form.
 
 ## Settings: `config.js`
 

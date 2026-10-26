@@ -71,7 +71,9 @@ module.exports = {
         console: true,
         desktop: true,        // Windows toast, click = open the listing
         openBrowser: false,   // true = open every match directly in your default browser (fastest way to apply)
-        telegram: { enabled: false, botToken: '', chatId: '' }
+        // Phone alerts: every message has a "Jetzt bewerben" button plus the link to the listing.
+        // Setup: README, section Telegram. startupMessage: one message when the program starts.
+        telegram: { enabled: false, botToken: '', chatId: '', startupMessage: true }
     },
 
     // true = on the very first start, also report everything that is online right now (normally it is
